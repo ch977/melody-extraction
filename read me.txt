@@ -1,0 +1,3 @@
+This is a matlab implementation for paper "melody extraction from ployphonic music".
+
+这是一个论文实现，MATLAB代码
