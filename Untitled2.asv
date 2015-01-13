@@ -1,0 +1,39 @@
+
+%%
+%find frames that existing more than one peaks
+mat1=cell2mat(contSet2);
+mat2=sortrows(mat1,1);
+uninum=unique(mat2(:,1));
+
+%重复的那些帧取出，只对他们处理
+%%
+
+
+n1=length(contSet2);
+cont=zeros(nFrame,n1);
+salience=zeros(nFrame,n1);
+for p=1:n1
+    
+    cont(contSet2{p}(1,1):contSet2{p}(end,1),p)=contSet2{p}(:,2);   %pitch value
+    salience(contSet2{p}(1,1):contSet2{p}(end,1),p)=contTs(p);
+end
+
+
+%%
+contSet3=cell(size(contSet2));
+for i=1:length(contSet2)
+    contSet3{i}=[contSet2{i} i*ones(size(contSet2{i},1),1) contTs2(i)*ones(size(contSet2{i},1),1)];%add two 
+    %columns responding to cont number and contTs
+end
+mat3=cell2mat(contSet3);
+
+
+[c1,pos1]=sort(mat3(:,5));  %sort with contTs
+sortmat=mat3(pos1,:);  
+[c2,pos2]=sort(sortmat(:,1));  %sort with frame num
+sortmat1=sortmat(pos2,:);  
+
+[c3,I]=unique(sortmat1(:,1),'rows');
+result=sortmat1(I,:);  
+
+    

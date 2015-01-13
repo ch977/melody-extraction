@@ -1,0 +1,97 @@
+function contourSet=filterPeak_createcontour(S)
+%   filter out non-salience
+%   two stage
+%   output:
+%   contourSet,cell type
+%   in contourSet{i},every row is a frame,
+%   3 columns,1:frame number;2:frequency (bin);3:salience value
+%   
+tau1=0.9;
+tau2=0.9;
+%first:per frame basis
+%peaks below a threshold factor tau1*max are filtered out
+num_F=size(S,1);
+set1c=cell(num_F,1);
+set2c=cell(num_F,1);
+peak_re=zeros(num_F*600,1);
+t=0;
+for i=1:num_F
+    SP=S(i,:);
+    pM=max(SP);
+    idx=find(SP>=tau1*pM);
+    set1c{i}=[idx;SP(idx)]';
+    set2c{i}=[~idx;SP(~idx)]';
+    L=length(idx);
+    peak_re(t+1,t+L) = SP(idx);
+    t=t+L;
+end
+
+%second :filter according characteristics of all frames
+peak_re=peak_re(peak_re>0);
+m_p=mean(peak_re);
+s_p=std(peak_re);  %
+Th_all=m_p-s_p*tau2;
+
+for i=1:num_F
+    set1c{i}=set1c{i}((set1c{i}(:,2)>Th_all),:);
+    set2c{i}=[set2c{i};set1c{i}((set1c{i}(:,2)<=Th_all),:)];
+end
+
+%transform cell to matrix
+%first column :frame    second:bin    third:salience
+set1=[];
+set2=[];
+for i=1:num_F
+    set1= [set1;i*ones(size(set1c{i},1),1) set1c{i}];
+end
+for i=1:num_F
+    set2 = [set2;i*ones(size(set2c{i},1),1) set2c{i}];
+end
+
+contour=cell();         %contour set
+ci=1;       %contour id
+while(~isempty(set1))
+    [value,id]=max(set1(:,3));      %find highest peak
+    p1=set1(id,:);
+    contour{ci}=p1;     % add highest peak to contour
+    delID1=id;              %  ids need to delete
+    fraNum=p1(1);         %frame number of highest
+    id_end=find(set1(:,1)==fraNum+35,1);   %following 100ms frames
+    for i=id+1:id_end           % add peaks from set1 or set2
+        frameId=set1(i,1);
+        
+        if abs(set1(i,2)-p1(2))<8      %within 80 cents (pitch continuity cue )
+            p2=set1(i,:);
+            contour{ci}=[contour{ci}; p2];   %add it to contour
+            delID1=[delID1 ;p2];
+            id=i;
+            fraNum=p2(1);   %update frame num
+            id_end=find(set1(:,1)==fraNum+35,1);
+            p1=set1(i,:);       %update p1
+        else
+            id2=find(set2(:,1)==frameId);
+            L=length(id2);
+            for i=1:L
+                if abs(set2(id2-i+1,2)-set1(i,2))<8  %  if there is peak in set2 within 80 cents
+                    p3=set2(id2,:);
+                    contour{ci}=[contour{ci}; p3];
+                    delID2=[delID2 ;p3];
+                end
+                break
+            end
+        end
+    end
+    set1(delID1,:)=[];          %delete grouped peaks , update set1
+    set2(delID2,:)=[];
+    ci=ci+1;
+end
+contourSet=contour;
+end
+
+
+
+
+
+
+
+

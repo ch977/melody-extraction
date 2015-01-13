@@ -1,0 +1,163 @@
+function melodycont=melodyselection(contSet,pstd,contms,contTs,vibrato,nFrame)
+%select melody
+
+%stage 1: voicing detection
+%determining when the melody is present and when it is not
+avercontms=mean(contms);
+stdcontms=std(contms);
+nu=0.2;     %this value changed  over different collections
+voiThre = avercontms-stdcontms*nu;
+voicecontId1=(contms>voiThre);
+voicecontId2=(vibrato>0);          % vibrato means melody
+voicecontId3=(pstd>4);          %pitch deviation is above 40 cents
+voicecontId=unique([voicecontId1 voicecontId2 voicecontId3]);
+contSet=contSet(voicecontId) ;
+%stage 2:octave errors and pitch outliers
+len1=length(contSet);
+
+%P(t):weighted mean of pitch of all contours present in the frame
+    function pchMfilt=meanPitch(contSet,contTs,nFrame)
+        ncont=length(contSet);
+        sumcont=zeros(nFrame,2);
+        sumcont(:,1)=1:nFrame;
+        fracontnum=zeros(nFrame,1);         %contour nums of every frame
+        for k=1:ncont
+            tempcont=zeros(nFrame,2);
+            fraID=contSet{k}(:,1);
+            tem=zeros(nFrame,1);
+            tem(fraID)=1;
+            fracontnum=fracontnum+tem;
+            tempcont(fraID,2)=contSet{k}(:,2)*contTs(k);
+            sumcont=sumcont+tempcont;
+        end
+        pitchM=sumcont(:,2)./fracontnum;   %P(t)
+        %mean filter
+        h=fspecial('average',[1,1000]);%2.9 second sliding mean filter
+        pchMfilt=filter(h,1,pitchM);
+    end
+
+%detect pairs of octave duplicates and remove the wrong one
+    function [contSet,contTs]=detOcta(contSet,contTs,pchMfilt,len1)
+        dupset=zeros(len1,4);
+        t=0;
+        for i=1:len1-1
+            for j=i+1:len1
+                if contSet{i}(1,1)<contSet{j}(1,1)&&contSet{i}(end,1)>contSet{j}(end,1)  %j belong to i
+                    s=contSet{j}(1,1);
+                    e=contSet{j}(end,1);
+                    i_s=find(contSet{i}(:,1)==s);
+                    i_e=find(contSet{i}(:,1)==e);
+                    dupcont=contSet{i}(i_s:i_e,:);
+                    mdist=abs(dupcont(:,2)-contSet{j}(:,2))/length(contSet{j});
+                    if mdist<125&&mdist>115         %mean distance within 1200+-50cents
+                        dupset(t,:)=[j,i,i_s,i_e];    %first one is short
+                        t=t+1;
+                    end
+                elseif contSet{j}(1,1)<contSet{i}(1,1)&&contSet{j}(end,1)>contSet{i}(end,1)  %j belong to i
+                    s=contSet{i}(1,1);
+                    e=contSet{i}(end,1);
+                    j_s=find(contSet{j}(:,1)==s);
+                    j_e=find(contSet{j}(:,1)==e);
+                    dupcont=contSet{j}(i_s:i_e,:);
+                    mdist=abs(dupcont(:,2)-contSet{i}(:,2))/length(contSet{i});
+                    if mdist<125&&mdist>115         %mean distance within 1200+-50cents
+                        dupset(t,:)=[i,j,j_s,j_e];    %first one is short
+                        t=t+1;
+                    end
+                end
+            end
+        end
+        
+        b=find(dupset==0);
+        npair=b(1)-1;    %number of pairs
+        octaveErr=zeros(npair,1);
+        octi=1;
+        for i=1:npair
+            c1=dupset(i,1);
+            c2=dupset(i,2);
+            s1=dupset(i,3);
+            e1=dupset(i,4);
+            dupcont=contSet{c2}(s1:e1,:);
+            s2=contSet{c1}(1,1);
+            e2=contSet{c1}(end,1);
+            pm=pchMfilt(s2:e2,:);
+            
+            dist1=sum(abs(contSet{c1}-pm));
+            dist2=sum(abs(dupcont-pm));
+            if dist1<dist2
+                octaveErr(octi)=c2;
+            else
+                octaveErr(octi)=c1;
+            end
+            octi=octi+1;
+        end
+        
+        contSet(octaveErr)=[];  %remove the contour furthest from mean P(t)
+        contTs(octaveErr)=[];
+    end
+
+%remove outliers
+    function [contSet,contTs]=remoutlier(contSet,contTs,pchmean)
+        ncont=length(contSet);
+        t=1;
+        outlier=zeros(ncont,1);
+        for i=1:ncont
+            s=contSet{i}(1,1);
+            e=contSet{i}(end,1);
+            p_s=find(pchmean(:,1)==s);
+            p_e=find(pchmean(:,1)==e);
+            pch1=pchmean(p_s:p_e,:);
+            dist=sum(abs(contSet{i}(:,2)-pch1(:,2)));
+            dist=dist/length(contSet{i});
+            if dist>115   %outliers:more than one octave from mean p
+                outlier(t)=i;
+                t=t+1;
+            end
+            id=find(outliers==0);
+            outliers(id:end)=[];
+            contSet(outlier)=[];
+            contTs(outlier)=[];
+        end
+    end
+%maybe we need plotting some curves
+% pchmean=meanPitch(contSet,contTs);
+% [contSet1,contTs1]=detOcta(contSet,contTs,pchmean,len1);
+% pchmean1=meanPitch(contSet1,contTs1);
+% [contSet2,contTs2]=remoutlier(contSet1,contTs1,pchmean1);
+% pchmean2=meanPitch(contSet2,contTs2);
+% [contSet1,contTs1]=detOcta(contSet,contTs,pchmean2,len1);
+% pchmean3=meanPitch(contSet1,contTs1);
+% [contSet2,contTs2]=remoutlier(contSet1,contTs1,pchmean3);
+% pchmean4=meanPitch(contSet2,contTs2);
+% [contSet1,contTs1]=detOcta(contSet,contTs,pchmean4,len1);
+% pchmean5=meanPitch(contSet1,contTs1);
+% [contSet2,contTs2]=remoutlier(contSet1,contTs1,pchmean5);
+% pchmean6=meanPitch(contSet2,contTs2);
+
+% use for loop to do things above
+pchmean=cell(7,1);
+pchmean{1}=meanPitch(contSet,contTs);
+for ind=1:3
+    [contSet1,contTs1]=detOcta(contSet,contTs,pchmean{2*ind-1},len1);
+    pchmean{2*ind}=meanPitch(contSet1,contTs1);
+    [contSet2,contTs2]=remoutlier(contSet1,contTs1,pchmean{2*ind});
+    pchmean{2*ind+1}=meanPitch(contSet2,contTs2);
+end
+%contSet2,contTs2 are the output
+
+%final melody selection
+n1=length(contSet2);
+cont=zeros(nFrame,n1);
+salience=zeros(nFrame,n1);
+for p=1:n1
+    cont(contSet2{p}(1,1):contSet2{p}(end,1),p)=contSet2{p}(:,2);   %pitch value
+    salience(contSet2{p}(1,1):contSet2{p}(end,1),p)=contTs(p);
+end
+
+[C,I]=max(salience,[],2);   %max element of every row,corresponding to a Frame
+% for q=1:nFrame
+%     pitchcont(q)=cont(q,I(q));
+% end
+Id=[(1:nFrame)' I];
+melodycont=diag(cont(Id(:,1),Id(:,2)));
+end
